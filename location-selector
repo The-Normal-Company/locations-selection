@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapbox Location Picker</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.min.js'></script>
+    <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.css' type='text/css' />
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        #map {
+            width: 100%;
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div id='map'></div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const mapboxToken = urlParams.get('mapboxToken');
+        let glideToken = "7d429892-ad13-499b-a8f6-acdf5160eaa9";
+        const appId = urlParams.get('appId');
+        const tableId = urlParams.get('tableId');
+        const rowId = urlParams.get('rowId');
+        const columnName = urlParams.get('columnName');
+
+        mapboxgl.accessToken = mapboxToken;
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/satellite-streets-v11',
+            center: [-95, 37],
+            zoom: 4
+        });
+
+        const geocoder = new MapboxGeocoder({
+            accessToken: mapboxgl.accessToken,
+            mapboxgl: mapboxgl,
+            placeholder: 'Search for an address or enter coordinates',
+            marker: false // Disable the default marker
+        });
+
+        map.addControl(geocoder);
+        
+        let markers = [];
+
+        function addOrUpdateMarker(longitude, latitude) {
+            const newMarker = new mapboxgl.Marker()
+                .setLngLat([longitude, latitude])
+                .addTo(map);
+            markers.push(newMarker);
+        }
+
+        function updateMarkers() {
+            // Function to update all markers in Glide Table
+            const coordinates = markers.map(marker => {
+                const lngLat = marker.getLngLat();
+                return `${lngLat.lat},${lngLat.lng}`;
+            }).join(';');
+            
+            updateGlideTableCoordinates(coordinates);
+        }
+
+        map.on('click', function(e) {
+            const latitude = e.lngLat.lat;
+            const longitude = e.lngLat.lng;
+
+            addOrUpdateMarker(longitude, latitude);
+            updateMarkers();
+        });
+
+        geocoder.on('result', function(e) {
+            const latitude = e.result.geometry.coordinates[1];
+            const longitude = e.result.geometry.coordinates[0];
+
+            addOrUpdateMarker(longitude, latitude);
+            updateMarkers();
+        });
+
+        document.querySelector('.mapboxgl-ctrl-geocoder--input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const val = this.value;
+                const coordPattern = /^([-+]?[1-8]?\d(?:\.\d{1,15})?|90(?:\.0{1,15})?),\s*([-+]?(?:180(?:\.0{1,15})?|(?:(?:1[0-7]\d)|[1-9]?\d)(?:\.\d{1,15})?))$/;
+                const match = val.match(coordPattern);
+                if (match) {
+                    const latitude = parseFloat(match[1]);
+                    const longitude = parseFloat(match[2]);
+
+                    map.flyTo({
+                        center: [longitude, latitude],
+                        zoom: 15
+                    });
+
+                    addOrUpdateMarker(longitude, latitude);
+                    updateMarkers();
+
+                    e.preventDefault();
+                }
+            }
+        });
+
+        function updateGlideTableCoordinates(coordinates) {
+            const endpoint = 'https://api.glideapp.io/api/function/mutateTables';
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${glideToken}`
+            };
+
+            const data = {
+                appID: appId,
+                mutations: [
+                    {
+                        kind: "set-columns-in-row",
+                        tableName: tableId
+                        columnValues: {
+                        [columnName]: coordinates
+                    },
+                    rowID: rowId
+                }
+            ]
+        };
+
+        fetch(endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(data)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server responded with: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Data updated successfully:', data);
+        })
+        .catch(error => {
+            console.error('Error updating data:', error);
+        });
+    }
+</script>
