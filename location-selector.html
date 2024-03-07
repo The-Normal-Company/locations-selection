@@ -114,14 +114,15 @@
                 mutations: [
                     {
                         kind: "set-columns-in-row",
-                        tableName: tableId
+                        tableName: tableId, // Make sure this line ends with a comma.
                         columnValues: {
-                        [columnName]: coordinates
-                    },
-                    rowID: rowId
-                }
-            ]
-        };
+                            [columnName]: coordinates
+                        },
+                        rowID: rowId
+                    }
+                ]
+            };
+
 
         fetch(endpoint, {
             method: 'POST',
